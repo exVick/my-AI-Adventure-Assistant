@@ -1,9 +1,9 @@
 {
   "wind_threshold_knots": 15,
   "kitesurf_spots": [
-    {"name": "Burgas Bay",    "lat": 42.53, "lon": 27.49},
-    {"name": "Pomorie Lake",  "lat": 42.61, "lon": 27.63},
-    {"name": "Nessebar Cape", "lat": 42.65, "lon": 27.72},
+    {"name": "Burgas",        "lat": 42.53, "lon": 27.49},
+    {"name": "Krapets",       "lat": 43.60, "lon": 28.57},
+    {"name": "Gökçeada",      "lat": 40.14, "lon": 25.98},
     {"name": "Sozopol",       "lat": 42.42, "lon": 27.70}
   ]
 }
