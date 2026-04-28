@@ -29,7 +29,7 @@ class SetTripParameters(BaseModel):
     max_distance_km: int = Field(
         description=(
             "Maximum one-way driving distance from the origin in km. "
-            "Weekend trip from Sofia → Black Sea / Aegean / Adriatic: 400-800 km. "
+            "Weekend trip from a typical inland origin → Black Sea / Aegean / Adriatic: 400-800 km. "
             "Never exceed 1200 km."
         )
     )
@@ -75,7 +75,7 @@ for an upcoming weekend or short trip.
 
 ## Reasoning rules:
 • target_months  : always include the current month + next 1-2 months.
-• max_distance_km: for an inland origin (Sofia), the weekend sweet spot is
+• max_distance_km: for an inland origin, the weekend sweet spot is
   400-800 km. Stretch to 1000 km only for exceptional destinations.
 • preferred_wind_types:
     – April-September  → "Thermal" dominates Black Sea / Aegean coasts.
