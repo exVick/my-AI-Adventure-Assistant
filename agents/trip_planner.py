@@ -26,13 +26,6 @@ class SetTripParameters(BaseModel):
             "near-future windows are both captured. E.g. ['April', 'May', 'June']."
         )
     )
-    max_distance_km: int = Field(
-        description=(
-            "Maximum one-way driving distance from the origin in km. "
-            "Weekend trip from a typical inland origin → Black Sea / Aegean / Adriatic: 400-800 km. "
-            "Never exceed 1200 km."
-        )
-    )
     preferred_wind_types: list[str] = Field(
         description=(
             "Wind type(s) to prioritise when scoring spots. "
@@ -47,16 +40,10 @@ class SetTripParameters(BaseModel):
             "N, NNE, NE, ENE, E, ESE, SE, SSE, S, SSW, SW, WSW, W, WNW, NW, NNW."
         )
     )
-    min_wind_kn: int = Field(
-        description=(
-            "Minimum sustained wind speed in knots to consider a spot viable. "
-            "Standard kitesurf threshold: 15 kn. Lower only for large-kite setups."
-        )
-    )
     trip_rationale: str = Field(
         description=(
-            "One or two sentences explaining why these parameters were chosen — "
-            "mention the season, dominant wind regime, and any distance trade-offs."
+            "One or two sentences explaining why these wind/season parameters were chosen — "
+            "mention seasonality and dominant regional wind regime."
         )
     )
 
@@ -75,8 +62,6 @@ for an upcoming weekend or short trip.
 
 ## Reasoning rules:
 • target_months  : always include the current month + next 1-2 months.
-• max_distance_km: for an inland origin, the weekend sweet spot is
-  400-800 km. Stretch to 1000 km only for exceptional destinations.
 • preferred_wind_types:
     – April-September  → "Thermal" dominates Black Sea / Aegean coasts.
     – Oct-March        → "Bora" (Adriatic), "Mistral" (W. Mediterranean) are
@@ -84,10 +69,33 @@ for an upcoming weekend or short trip.
 • preferred_directions: side-shore (≈ 45-90° off the beach) is the safest
   kite angle. For the Black Sea / Aegean in spring-summer: NE, ENE, E thermals.
   For the Adriatic: N, NNE bora.
-• min_wind_kn: default 15. Use 12 only if explicitly noted.
+
+Operational constraints are handled in code, not by this tool call:
+• max_distance_km is set by policy/config.
+• min_wind_kn is set by policy/config.
 
 You MUST call SetTripParameters. Plain text responses are not acceptable.
 """.strip()
+
+
+def _default_max_distance_km(today: date) -> int:
+    """Deterministic policy so LLM does not invent distance thresholds."""
+    env_override = os.environ.get("MAX_DISTANCE_KM")
+    if env_override:
+        return int(env_override)
+
+    # Slightly larger radius in winter when thermal options are fewer.
+    if today.month in {11, 12, 1, 2}:
+        return 900
+    return 800
+
+
+def _default_min_wind_kn() -> int:
+    """Deterministic threshold with optional env override."""
+    env_override = os.environ.get("MIN_WIND_KN")
+    if env_override:
+        return int(env_override)
+    return 15
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +108,8 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
 
     Reads the current date and the user's origin location (env vars), then
     invokes Llama 3 70B with the SetTripParameters tool bound.  The tool-call
-    arguments are extracted and merged with the runtime origin coordinates to
-    form `trip_parameters`.
+    arguments are extracted and merged with deterministic policy values and
+    runtime origin coordinates to form `trip_parameters`.
 
     Reads from state : nothing (uses live date + env config)
     Writes to state  : trip_parameters, messages
@@ -110,11 +118,15 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
     origin_city = os.environ.get("ORIGIN_CITY", "Sofia, Bulgaria")
     origin_lat  = float(os.environ.get("ORIGIN_LAT", "42.70"))
     origin_lon  = float(os.environ.get("ORIGIN_LON", "23.32"))
+    max_distance_km = _default_max_distance_km(today)
+    min_wind_kn = _default_min_wind_kn()
 
     human_text = (
         f"Today's date    : {today.strftime('%A, %d %B %Y')}\n"
         f"Departure point : {origin_city} "
         f"(lat={origin_lat:.4f}, lon={origin_lon:.4f})\n\n"
+        f"Fixed constraints (policy): max_distance_km={max_distance_km}, "
+        f"min_wind_kn={min_wind_kn}.\n"
         "Determine the optimal trip parameters and call SetTripParameters now."
     )
 
@@ -138,6 +150,8 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
     args: dict = response.tool_calls[0]["args"]
     trip_parameters: dict[str, Any] = {
         **args,
+        "max_distance_km": max_distance_km,
+        "min_wind_kn": min_wind_kn,
         "origin_city":  origin_city,
         "origin_lat":   origin_lat,
         "origin_lon":   origin_lon,

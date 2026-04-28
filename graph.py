@@ -82,13 +82,15 @@ def trip_planner_node(state: GraphState) -> dict[str, Any]:
     """
     Delegates to Agent 1 (run_trip_planner).
 
-    The LLM issues a SetTripParameters tool call whose arguments encode:
+        The LLM issues a SetTripParameters tool call whose arguments encode:
       • target_months          — which months to search in the spot database
-      • max_distance_km        — radius from the origin city
       • preferred_directions   — compass points the Wind Expert will score against
       • preferred_wind_types   — thermal / bora / mistral priority
-      • min_wind_kn            — viability threshold forwarded to weather_tools
       • trip_rationale         — LLM's reasoning for these parameters (stored for inspection)
+
+        Deterministic policy/config values are merged in by the Trip Planner code:
+            • max_distance_km        — radius from the origin city
+            • min_wind_kn            — viability threshold forwarded to weather_tools
 
     These parameters are stored in state.trip_parameters so every downstream
     node can read them without re-querying the LLM.
