@@ -3,6 +3,7 @@ import math
 import os
 from typing import Optional
 
+#TODO: improve distance measure with travelling times/ maybe diesel prices
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     R = 6371.0
