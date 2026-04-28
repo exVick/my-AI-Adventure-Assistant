@@ -93,7 +93,7 @@ OUTPUT FORMAT  (strict Markdown, ≤ 220 words)
 ## 🪁 Kitesurf Watchdog — GO ALERT
 
 **Top Pick: <spot_name>, <country>**
-<one punchy sentence on WHY this spot wins today>
+<one punchy sentence on WHY this spot wins>
 
 | # | Spot | Peak wind | Drive | Best window |
 |---|------|-----------|-------|-------------|
@@ -152,7 +152,11 @@ def run_head_coach(state: GraphState) -> dict[str, Any]:
             f"    Peak: {s['peak_ms']} m/s  Avg: {s['avg_ms']} m/s  "
             f"Dir match: {s['direction_match_pct']}%  "
             f"Viable hrs: {s['viable_hours_count']}\n"
+            f"    Best day    : {s.get('best_day', 'unknown')}\n"
             f"    Best window : {s['best_session_window']}\n"
+            f"    Conditions  : {s.get('avg_temp_c', '?')}°C  "
+            f"rain {s.get('avg_precip_per_day_mm', '?')} mm/day  "
+            f"cloud {s.get('avg_cloud_pct', '?')}%\n"
             f"    Drive time  : {drive}  ({s['distance_km']} km aerial)\n"
             f"    Score       : {s['composite_score']}/100\n"
             f"    Rationale   : {s['rationale']}\n"
