@@ -90,7 +90,7 @@ def trip_planner_node(state: GraphState) -> dict[str, Any]:
 
         Deterministic policy/config values are merged in by the Trip Planner code:
             • max_distance_km        — radius from the origin city
-            • min_wind_kn            — viability threshold forwarded to weather_tools
+            • min_wind_ms            — viability threshold forwarded to weather_tools
 
     These parameters are stored in state.trip_parameters so every downstream
     node can read them without re-querying the LLM.
@@ -157,11 +157,11 @@ def weather_node(state: GraphState) -> dict[str, Any]:
 
     params           = state["trip_parameters"]
     candidate_spots  = state["candidate_spots"]
-    min_wind_kn      = float(params.get("min_wind_kn", 15))
+    min_wind_ms      = float(params.get("min_wind_ms", 7.5))
 
     weather_forecasts = check_wind_forecasts(
         candidate_spots   = candidate_spots,
-        wind_threshold_kn = min_wind_kn,
+        wind_threshold_ms = min_wind_ms,
     )
 
     return {"weather_forecasts": weather_forecasts}

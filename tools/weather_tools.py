@@ -5,8 +5,7 @@ from typing import Any
 import requests
 
 _OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
-_WIND_THRESHOLD_KN = 15.0
-_MS_TO_KN = 1.94384          # Open-Meteo returns m/s by default; we convert here
+_WIND_THRESHOLD_MS = 7.5
 _FORECAST_DAYS = 3
 _REQUEST_TIMEOUT_S = 10
 
@@ -43,24 +42,24 @@ def _fetch_spot_forecast(spot: dict) -> tuple[str, dict[str, Any] | None]:
         if not speeds_ms:
             return name, None
 
-        speeds_kn = [round(s * _MS_TO_KN, 1) for s in speeds_ms]
-        gusts_kn  = [round(g * _MS_TO_KN, 1) for g in gusts_ms]
-        peak_kn   = max(speeds_kn)
+        speeds_ms = [round(s, 1) for s in speeds_ms]
+        gusts_ms  = [round(g, 1) for g in gusts_ms]
+        peak_ms   = max(speeds_ms)
 
-        if peak_kn < _WIND_THRESHOLD_KN:
-            print(f"  [weather] {name:<35} peak {peak_kn:.1f} kn — below threshold, skipped.")
+        if peak_ms < _WIND_THRESHOLD_MS:
+            print(f"  [weather] {name:<35} peak {peak_ms:.1f} m/s — below threshold, skipped.")
             return name, None
 
         # Build per-hour records only for hours that meet the threshold
         viable_hours = [
             {
                 "time":          times[i],
-                "wind_kn":       speeds_kn[i],
-                "gust_kn":       gusts_kn[i] if i < len(gusts_kn) else None,
+                "wind_ms":       speeds_ms[i],
+                "gust_ms":       gusts_ms[i] if i < len(gusts_ms) else None,
                 "direction_deg": directions[i] if i < len(directions) else None,
             }
-            for i, spd in enumerate(speeds_kn)
-            if spd >= _WIND_THRESHOLD_KN
+            for i, spd in enumerate(speeds_ms)
+            if spd >= _WIND_THRESHOLD_MS
         ]
 
         forecast = {
@@ -69,13 +68,13 @@ def _fetch_spot_forecast(spot: dict) -> tuple[str, dict[str, Any] | None]:
             "longitude":    spot["longitude"],
             "distance_km":  spot.get("distance_km"),
             "wind_info":    spot.get("wind_info", {}),
-            "peak_kn":      peak_kn,
-            "avg_kn":       round(sum(speeds_kn) / len(speeds_kn), 1),
+            "peak_ms":      peak_ms,
+            "avg_ms":       round(sum(speeds_ms) / len(speeds_ms), 1),
             "viable_hours": viable_hours,
-            "unit":         "knots",
+            "unit":         "m/s",
         }
 
-        print(f"  [weather] {name:<35} peak {peak_kn:.1f} kn — VIABLE ({len(viable_hours)} hrs ≥ threshold).")
+        print(f"  [weather] {name:<35} peak {peak_ms:.1f} m/s — VIABLE ({len(viable_hours)} hrs ≥ threshold).")
         return name, forecast
 
     except Exception as exc:
@@ -85,28 +84,28 @@ def _fetch_spot_forecast(spot: dict) -> tuple[str, dict[str, Any] | None]:
 
 def check_wind_forecasts(
     candidate_spots: list[dict],
-    wind_threshold_kn: float = _WIND_THRESHOLD_KN,
+    wind_threshold_ms: float = _WIND_THRESHOLD_MS,
     max_workers: int = 10,
 ) -> dict[str, dict[str, Any]]:
     """
     Fetch wind forecasts for all candidate spots in parallel and return only
     those where the peak wind over the next `_FORECAST_DAYS` days is at or
-    above `wind_threshold_kn`.
+    above `wind_threshold_ms`.
 
     Args:
         candidate_spots:   List of spot dicts (output of filter_spots).
-        wind_threshold_kn: Minimum peak wind to consider a spot viable (default 15 kn).
+        wind_threshold_ms: Minimum peak wind to consider a spot viable (default 7.5 m/s).
         max_workers:       Thread-pool size for parallel HTTP calls (default 10).
 
     Returns:
         Dict keyed by spot name → forecast dict for each viable spot.
     """
-    global _WIND_THRESHOLD_KN
-    _WIND_THRESHOLD_KN = wind_threshold_kn
+    global _WIND_THRESHOLD_MS
+    _WIND_THRESHOLD_MS = wind_threshold_ms
 
     print(
         f"\n[check_wind_forecasts] Querying {len(candidate_spots)} spots "
-        f"(threshold: {wind_threshold_kn} kn, workers: {max_workers}) ..."
+        f"(threshold: {wind_threshold_ms} m/s, workers: {max_workers}) ..."
     )
 
     viable: dict[str, dict] = {}

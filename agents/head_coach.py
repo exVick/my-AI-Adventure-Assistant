@@ -149,7 +149,7 @@ def run_head_coach(state: GraphState) -> dict[str, Any]:
         drive = _drive_time_str(s.get("distance_km"))
         spot_lines.append(
             f"  Rank #{s['rank']} | {s['spot_name']} ({s['country']})\n"
-            f"    Peak: {s['peak_kn']} kn  Avg: {s['avg_kn']} kn  "
+            f"    Peak: {s['peak_ms']} m/s  Avg: {s['avg_ms']} m/s  "
             f"Dir match: {s['direction_match_pct']}%  "
             f"Viable hrs: {s['viable_hours_count']}\n"
             f"    Best window : {s['best_session_window']}\n"

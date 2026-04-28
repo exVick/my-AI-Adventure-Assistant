@@ -65,16 +65,16 @@ def _compute_score(
 
       Component          Weight   Logic
       ─────────────────  ──────   ──────────────────────────────────────────
-      Wind intensity      35 pts  15 kn → 0, 30 kn+ → 35 (linear)
+      Wind intensity      35 pts  7.5 m/s → 0, 15 m/s+ → 35 (linear)
       Direction match     35 pts  direction_match_pct / 100 × 35
       Session window      20 pts  viable hours capped at 12 h → 20
       Distance proximity  10 pts  1 − (dist / max_dist) × 10
     """
     viable_hours: list[dict] = forecast.get("viable_hours", [])
-    peak_kn:     float       = forecast.get("peak_kn", 15.0)
+    peak_ms:     float       = forecast.get("peak_ms", 7.5)
     dist_km:     float       = forecast.get("distance_km") or max_distance_km
 
-    intensity  = min(35.0, max(0.0, (peak_kn - 15.0) / 15.0 * 35.0))
+    intensity  = min(35.0, max(0.0, (peak_ms - 7.5) / 7.5 * 35.0))
     dir_score  = _direction_match_pct(viable_hours, preferred_dirs) / 100.0 * 35.0
     window     = min(20.0, len(viable_hours) / 12.0 * 20.0)
     proximity  = max(0.0, (1.0 - dist_km / max_distance_km) * 10.0)
@@ -90,8 +90,8 @@ class RankedSpot(BaseModel):
     spot_name:           str   = Field(description="Exact spot name from the forecast data.")
     rank:                int   = Field(description="1 = best, 5 = fifth-best.")
     composite_score:     float = Field(description="Pre-computed numeric score (0-100).")
-    peak_kn:             float = Field(description="Peak wind speed in knots over the forecast window.")
-    avg_kn:              float = Field(description="Average wind speed in knots over the forecast window.")
+    peak_ms:             float = Field(description="Peak wind speed in m/s over the forecast window.")
+    avg_ms:              float = Field(description="Average wind speed in m/s over the forecast window.")
     viable_hours_count:  int   = Field(description="Number of hours at or above the wind threshold.")
     best_session_window: str   = Field(
         description="ISO datetime range for the best consecutive block of viable hours. "
@@ -125,7 +125,7 @@ You are a world-class kitesurf meteorologist and spot selector.
 You will receive a pre-scored table of candidate spots. Each row contains:
   • A numeric composite_score (0-100) computed from: wind intensity, direction
     match percentage, session window length, and distance from the origin.
-  • Raw forecast statistics: peak_kn, avg_kn, viable_hours_count,
+  • Raw forecast statistics: peak_ms, avg_ms, viable_hours_count,
     direction_match_pct.
   • The spot's known wind character from the database (wind_info).
 
@@ -221,8 +221,8 @@ def run_wind_expert(state: GraphState) -> dict[str, Any]:
         scored.append({
             "spot_name":           name,
             "composite_score":     score,
-            "peak_kn":             forecast.get("peak_kn", 0),
-            "avg_kn":              forecast.get("avg_kn", 0),
+            "peak_ms":             forecast.get("peak_ms", 0),
+            "avg_ms":              forecast.get("avg_ms", 0),
             "viable_hours_count":  len(forecast.get("viable_hours", [])),
             "best_session_window": window,
             "direction_match_pct": dir_pct,
