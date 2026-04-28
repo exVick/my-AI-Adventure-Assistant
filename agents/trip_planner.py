@@ -26,20 +26,6 @@ class SetTripParameters(BaseModel):
             "near-future windows are both captured. E.g. ['April', 'May', 'June']."
         )
     )
-    preferred_wind_types: list[str] = Field(
-        description=(
-            "Wind type(s) to prioritise when scoring spots. "
-            "Common values: 'Thermal', 'Seabreeze', 'Mistral', 'Bora', 'Cross-shore'. "
-            "Prioritise 'Thermal' for April-September in the Mediterranean / Black Sea."
-        )
-    )
-    preferred_directions: list[str] = Field(
-        description=(
-            "Preferred wind compass directions for kitesurfing (side-shore or "
-            "side-onshore are safest). Use standard 16-point abbreviations: "
-            "N, NNE, NE, ENE, E, ESE, SE, SSE, S, SSW, SW, WSW, W, WNW, NW, NNW."
-        )
-    )
     trip_rationale: str = Field(
         description=(
             "One or two sentences explaining why these wind/season parameters were chosen — "
@@ -57,22 +43,14 @@ You are an expert kitesurf trip planner with deep knowledge of Mediterranean,
 Aegean, Adriatic, and Black Sea wind patterns.
 
 Your job: analyse the current date and the user's departure city, then call the
-SetTripParameters tool with optimal filter parameters for finding kitesurf spots
-for an upcoming weekend or short trip.
+SetTripParameters tool with the target months and a short rationale for the
+search parameters.
 
 ## Reasoning rules:
-• target_months  : always include the current month + next 1-2 months.
-• preferred_wind_types:
-    – April-September  → "Thermal" dominates Black Sea / Aegean coasts.
-    – Oct-March        → "Bora" (Adriatic), "Mistral" (W. Mediterranean) are
-                          the primary offshore drivers.
-• preferred_directions: side-shore (≈ 45-90° off the beach) is the safest
-  kite angle. For the Black Sea / Aegean in spring-summer: NE, ENE, E thermals.
-  For the Adriatic: N, NNE bora.
+• target_months  : always include the current month + next 2-3 months.
 
 Operational constraints are handled in code, not by this tool call:
 • max_distance_km is set by policy/config.
-• min_wind_kn is set by policy/config.
 
 You MUST call SetTripParameters. Plain text responses are not acceptable.
 """.strip()
@@ -90,14 +68,6 @@ def _default_max_distance_km(today: date) -> int:
     return 800
 
 
-def _default_min_wind_kn() -> int:
-    """Deterministic threshold with optional env override."""
-    env_override = os.environ.get("MIN_WIND_KN")
-    if env_override:
-        return int(env_override)
-    return 15
-
-
 # ---------------------------------------------------------------------------
 # Agent function
 # ---------------------------------------------------------------------------
@@ -107,7 +77,7 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
     Agent 1 — Trip Planner.
 
     Reads the current date and the user's origin location (env vars), then
-    invokes Llama 3 70B with the SetTripParameters tool bound.  The tool-call
+    invokes specified LLM with the SetTripParameters tool bound.  The tool-call
     arguments are extracted and merged with deterministic policy values and
     runtime origin coordinates to form `trip_parameters`.
 
@@ -119,14 +89,12 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
     origin_lat  = float(os.environ.get("ORIGIN_LAT", "42.70"))
     origin_lon  = float(os.environ.get("ORIGIN_LON", "23.32"))
     max_distance_km = _default_max_distance_km(today)
-    min_wind_kn = _default_min_wind_kn()
 
     human_text = (
         f"Today's date    : {today.strftime('%A, %d %B %Y')}\n"
         f"Departure point : {origin_city} "
         f"(lat={origin_lat:.4f}, lon={origin_lon:.4f})\n\n"
-        f"Fixed constraints (policy): max_distance_km={max_distance_km}, "
-        f"min_wind_kn={min_wind_kn}.\n"
+        f"Fixed constraints (policy): max_distance_km={max_distance_km}.\n"
         "Determine the optimal trip parameters and call SetTripParameters now."
     )
 
@@ -151,7 +119,6 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
     trip_parameters: dict[str, Any] = {
         **args,
         "max_distance_km": max_distance_km,
-        "min_wind_kn": min_wind_kn,
         "origin_city":  origin_city,
         "origin_lat":   origin_lat,
         "origin_lon":   origin_lon,
