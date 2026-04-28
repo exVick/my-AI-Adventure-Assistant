@@ -6,6 +6,9 @@ from langchain_groq import ChatGroq
 
 from state import GraphState
 
+# Define model
+model_used = "openai/gpt-oss-120b"
+
 # ---------------------------------------------------------------------------
 # Drive-time helper
 # ---------------------------------------------------------------------------
@@ -186,7 +189,7 @@ def run_head_coach(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.6)
+    llm = ChatGroq(model=model_used, temperature=0.6)
 
     print("[Head Coach] Generating personalised alert ...")
     response: AIMessage = llm.invoke(messages)

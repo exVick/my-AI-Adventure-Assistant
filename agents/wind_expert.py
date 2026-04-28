@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field
 
 from state import GraphState
 
+# Define model
+model_used = "openai/gpt-oss-120b"
+
 # ---------------------------------------------------------------------------
 # Direction-matching helpers  (pure Python — no LLM arithmetic)
 # ---------------------------------------------------------------------------
@@ -254,7 +257,7 @@ def run_wind_expert(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.2)
+    llm = ChatGroq(model=model_used, temperature=0.2)
     structured_llm = llm.with_structured_output(WindExpertOutput)
 
     print(f"[Wind Expert] Scoring {len(weather_forecasts)} viable spots, ranking top 5 ...")

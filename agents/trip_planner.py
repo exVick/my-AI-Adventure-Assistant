@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 
 from state import GraphState
 
+# Define model
+model_used = "openai/gpt-oss-120b"
+
 # ---------------------------------------------------------------------------
 # Tool schema
 # ---------------------------------------------------------------------------
@@ -67,11 +70,10 @@ You are an expert kitesurf trip planner with deep knowledge of Mediterranean,
 Aegean, Adriatic, and Black Sea wind patterns.
 
 Your job: analyse the current date and the user's departure city, then call the
-Set_Trip_Parameters tool with optimal filter parameters for finding kitesurf spots
+SetTripParameters tool with optimal filter parameters for finding kitesurf spots
 for an upcoming weekend or short trip.
 
-Reasoning rules
-───────────────
+## Reasoning rules:
 • target_months  : always include the current month + next 1-2 months.
 • max_distance_km: for an inland origin (Sofia), the weekend sweet spot is
   400-800 km. Stretch to 1000 km only for exceptional destinations.
@@ -84,7 +86,7 @@ Reasoning rules
   For the Adriatic: N, NNE bora.
 • min_wind_kn: default 15. Use 12 only if explicitly noted.
 
-You MUST call Set_Trip_Parameters. Plain text responses are not acceptable.
+You MUST call SetTripParameters. Plain text responses are not acceptable.
 """.strip()
 
 
@@ -97,7 +99,7 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
     Agent 1 — Trip Planner.
 
     Reads the current date and the user's origin location (env vars), then
-    invokes Llama 3 70B with the Set_Trip_Parameters tool bound.  The tool-call
+    invokes Llama 3 70B with the SetTripParameters tool bound.  The tool-call
     arguments are extracted and merged with the runtime origin coordinates to
     form `trip_parameters`.
 
@@ -113,7 +115,7 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
         f"Today's date    : {today.strftime('%A, %d %B %Y')}\n"
         f"Departure point : {origin_city} "
         f"(lat={origin_lat:.4f}, lon={origin_lon:.4f})\n\n"
-        "Determine the optimal trip parameters and call Set_Trip_Parameters now."
+        "Determine the optimal trip parameters and call SetTripParameters now."
     )
 
     messages = [
@@ -121,7 +123,7 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
         HumanMessage(content=human_text),
     ]
 
-    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0)
+    llm = ChatGroq(model=model_used, temperature=0)
     llm_with_tool = llm.bind_tools([SetTripParameters])
 
     print("[Trip Planner] Invoking LLM ...")
@@ -129,7 +131,7 @@ def run_trip_planner(state: GraphState) -> dict[str, Any]:
 
     if not response.tool_calls:
         raise RuntimeError(
-            "[Trip Planner] LLM did not call Set_Trip_Parameters.\n"
+            "[Trip Planner] LLM did not call SetTripParameters.\n"
             f"Raw response: {response.content}"
         )
 
