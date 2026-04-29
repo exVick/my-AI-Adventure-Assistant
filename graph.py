@@ -7,6 +7,8 @@
 #   GROQ_API_KEY=gsk_...
 #   GARMIN_EMAIL=your@email.com
 #   SPOTS_JSON_PATH=/absolute/path/to/closeby_kitespots.json
+#   TELEGRAM_BOT_TOKEN=...       # from @BotFather on Telegram
+#   TELEGRAM_CHAT_ID=...         # your personal chat ID (message @userinfobot)
 #
 # Optional .env variables:
 #   GARMIN_PASSWORD=...          # headless/CI only; prefer interactive prompt
@@ -49,6 +51,9 @@
 #     │  Fetches live Garmin biometrics → state.health_summary
 #     │  Head Coach LLM synthesises ranked spots + health data → state.final_alert
 #     ▼
+#   [Telegram_Node]              ← telegram_tools (HTTP)
+#     │  Posts state.final_alert to your Telegram chat via Bot API.
+#     ▼
 #   END
 #
 # ============================================================
@@ -67,6 +72,7 @@ from tools.garmin_tools import fetch_health_summary
 from agents.trip_planner import run_trip_planner
 from agents.wind_expert import run_wind_expert
 from agents.head_coach import run_head_coach
+from tools.telegram_tools import send_telegram_alert
 
 # Reads GROQ_API_KEY and all other vars from the project's .env file
 load_dotenv(Path(__file__).parent / ".env")
@@ -259,6 +265,18 @@ def health_and_coach_node(state: GraphState) -> dict[str, Any]:
 
 
 # ============================================================
+# NODE 6 — Telegram Notification
+# ============================================================
+
+def telegram_node(state: GraphState) -> dict[str, Any]:
+    print("\n" + "=" * 62)
+    print("  NODE 6 — TELEGRAM NOTIFICATION")
+    print("=" * 62)
+    send_telegram_alert(state["final_alert"])
+    return {}
+
+
+# ============================================================
 # GRAPH ASSEMBLY
 # ============================================================
 
@@ -272,7 +290,7 @@ def build_graph() -> StateGraph:
         → Database_Filter_Node  (always)
         → Weather_Node          (always)
         → [conditional branch]
-              ├─ Wind_Expert_Node     → Health_And_Coach_Node → END
+              ├─ Wind_Expert_Node → Health_And_Coach_Node → Telegram_Node → END
               └─ END  (no viable forecasts)
     """
     workflow = StateGraph(GraphState)
@@ -283,6 +301,7 @@ def build_graph() -> StateGraph:
     workflow.add_node("Weather_Node",          weather_node)
     workflow.add_node("Wind_Expert_Node",      wind_expert_node)
     workflow.add_node("Health_And_Coach_Node", health_and_coach_node)
+    workflow.add_node("Telegram_Node",         telegram_node)
 
     # ── Deterministic edges ───────────────────────────────────────────────────
     #
@@ -314,7 +333,8 @@ def build_graph() -> StateGraph:
     # Once viable forecasts exist the remaining two nodes always run in order:
     # the Wind Expert ranks spots, then the Head Coach generates the alert.
     workflow.add_edge("Wind_Expert_Node",      "Health_And_Coach_Node")
-    workflow.add_edge("Health_And_Coach_Node", END)
+    workflow.add_edge("Health_And_Coach_Node", "Telegram_Node")
+    workflow.add_edge("Telegram_Node",         END)
 
     return workflow.compile()
 
@@ -325,7 +345,9 @@ def build_graph() -> StateGraph:
 
 if __name__ == "__main__":
     # ── Pre-flight checks ─────────────────────────────────────────────────────
-    missing = [v for v in ("GROQ_API_KEY", "GARMIN_EMAIL", "SPOTS_JSON_PATH") if not os.environ.get(v)]
+    required = ("GROQ_API_KEY", "GARMIN_EMAIL", "SPOTS_JSON_PATH",
+                "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
+    missing = [v for v in required if not os.environ.get(v)]
     if missing:
         raise SystemExit(
             f"ERROR: missing required env var(s): {', '.join(missing)}\n"
