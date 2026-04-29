@@ -95,8 +95,8 @@ OUTPUT FORMAT  (strict Markdown, ≤ 220 words)
 **Top Pick: <spot_name>, <country>**
 <one punchy sentence on WHY this spot wins>
 
-| # | Spot | Peak wind | Drive | Best window |
-|---|------|-----------|-------|-------------|
+| # | Spot | Peak wind | Temp | Best window |
+|---|------|-----------|------|-------------|
 | (fill top-5 table) |
 
 ---
@@ -146,10 +146,11 @@ def run_head_coach(state: GraphState) -> dict[str, Any]:
     # ── Build spot table for the prompt ──────────────────────────────────────
     spot_lines: list[str] = []
     for s in ranked_spots:
-        drive = _drive_time_str(s.get("distance_km"))
+        temp = s.get("avg_temp_c")
+        temp_str = f"{temp}°C" if temp is not None else "?°C"
         spot_lines.append(
             f"  Rank #{s['rank']} | {s['spot_name']} ({s['country']})\n"
-            f"    Peak: {s['peak_ms']} m/s  Avg: {s['avg_ms']} m/s  "
+            f"    Peak: {s['peak_ms']} m/s  Temp: {temp_str}  Avg: {s['avg_ms']} m/s  "
             f"Dir match: {s['direction_match_pct']}%  "
             f"Viable hrs: {s['viable_hours_count']}\n"
             f"    Best day    : {s.get('best_day', 'unknown')}\n"
@@ -157,7 +158,6 @@ def run_head_coach(state: GraphState) -> dict[str, Any]:
             f"    Conditions  : {s.get('avg_temp_c', '?')}°C  "
             f"rain {s.get('avg_precip_per_day_mm', '?')} mm/day  "
             f"cloud {s.get('avg_cloud_pct', '?')}%\n"
-            f"    Drive time  : {drive}  ({s['distance_km']} km aerial)\n"
             f"    Score       : {s['composite_score']}/100\n"
             f"    Rationale   : {s['rationale']}\n"
             f"    URL         : {s.get('url', 'N/A')}"
