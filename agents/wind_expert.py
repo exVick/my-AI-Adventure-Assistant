@@ -62,11 +62,11 @@ def _compute_score(
 
       Component            Weight   Logic
       ─────────────────    ──────   ──────────────────────────────────────────────────
-      Wind intensity         30 pts  7.5 m/s → 0, ≥15 m/s → 30 (linear; based on peak)
-      Direction match        25 pts  direction_match_pct / 100 × 25
-      Session window         20 pts  viable hours capped at 48 h total → full score
+    Wind intensity         30 pts  6.0 m/s → 0, ≥12 m/s → 30 (linear; based on peak)
+    Direction match        18 pts  direction_match_pct / 100 × 18
+    Session window         25 pts  viable hours capped at 72 h total → full score
       Distance proximity     10 pts  1 − (dist / max_dist) × 10
-      Temperature bonus       8 pts  ≤15°C → 0, ≥30°C → 8 (linear; over viable hours)
+    Temperature bonus      10 pts  ≤13°C → 0, ≥26°C → 10 (linear; over viable hours)
       Weather quality         7 pts  equal blend of low-precipitation and low-cloud scores
     """
     viable_hours: list[dict] = forecast.get("viable_hours", [])
@@ -76,12 +76,12 @@ def _compute_score(
     avg_prec: float = forecast.get("avg_precip_per_day_mm") or 0.0
     avg_cld:  float = forecast.get("avg_cloud_pct")      or  50.0
 
-    intensity  = min(30.0, max(0.0, (peak_ms - 7.5) / 7.5 * 30.0))
-    dir_score  = _direction_match_pct(viable_hours, preferred_dirs) / 100.0 * 25.0
-    # 48 viable hours across _FORECAST_DAYS days earns the full session-window score
-    window     = min(20.0, len(viable_hours) / 48.0 * 20.0)
+    intensity  = min(30.0, max(0.0, (peak_ms - 6.0) / 6.0 * 30.0))
+    dir_score  = _direction_match_pct(viable_hours, preferred_dirs) / 100.0 * 18.0
+    # 72 viable hours across _FORECAST_DAYS days earns the full session-window score
+    window     = min(25.0, len(viable_hours) / 72.0 * 25.0)
     proximity  = max(0.0, (1.0 - dist_km / max_distance_km) * 10.0)
-    temp_score = min(8.0,  max(0.0, (avg_temp - 15.0) / 15.0 * 8.0))
+    temp_score = min(10.0, max(0.0, (avg_temp - 13.0) / 13.0 * 10.0))
     # precip: 0 mm/day → 1.0, ≥5 mm/day → 0.  cloud: 0% → 1.0, 100% → 0.
     precip_fac = max(0.0, 1.0 - avg_prec / 5.0)
     cloud_fac  = max(0.0, 1.0 - avg_cld / 100.0)
