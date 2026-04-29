@@ -62,7 +62,7 @@ def fetch_health_summary() -> dict[str, Any]:
       - body_battery              : most recent reading from today's/yesterday's series
       - sleep_score               : overall score from last night
       - hrv_status                : yesterday's HRV classification
-      - resting_hr_bpm            : yesterday's resting heart rate
+    - resting_hr_bpm            : 7-day average resting heart rate
       - minutes_of_load_last7days : total training minutes across the last 7 days
                                     (derived from the 10 most recent activities)
 
@@ -76,13 +76,8 @@ def fetch_health_summary() -> dict[str, Any]:
     try:
         client = get_garmin_client()
 
-        # Body Battery — 2-day window so we catch today's data even if not yet synced
-        bb_raw = client.get_body_battery(yesterday_str, today_str)
-        body_battery = 0
-        if bb_raw:
-            series = bb_raw[-1].get("bodyBatteryValuesArray", [])
-            if series:
-                body_battery = int(series[-1][1])
+        # Body Battery — highest value for yesterday
+        body_battery = client.get_stats(yesterday_str)["bodyBatteryHighestValue"] or 0
 
         # Sleep score (last night)
         sleep_raw = client.get_sleep_data(yesterday_str) or {}
@@ -101,9 +96,9 @@ def fetch_health_summary() -> dict[str, Any]:
                    .lower()
         )
 
-        # Resting heart rate (yesterday)
-        hr_raw = client.get_heart_rates(yesterday_str) or {}
-        resting_hr = hr_raw.get("restingHeartRate", 0) or 0
+        # Resting heart rate (7-day average)
+        stats_raw = client.get_stats(yesterday_str) or {}
+        resting_hr = stats_raw.get("lastSevenDaysAvgRestingHeartRate", 0) or 0
 
         # Training load — sum minutes from activities within the 7-day window
         activities = client.get_activities(0, 10) or []

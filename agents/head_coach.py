@@ -173,7 +173,7 @@ def run_head_coach(state: GraphState) -> dict[str, Any]:
         f" → {load_labels['sleep_quality']}\n"
         f"  HRV Status          : {health_summary.get('hrv_status', '?')}"
         f" → {load_labels['hrv_state']}\n"
-        f"  Resting HR          : {health_summary.get('resting_hr_bpm', '?')} bpm"
+        f"  Resting HR (7d avg) : {health_summary.get('resting_hr_bpm', '?')} bpm"
         f" → {load_labels['cardiac_state']}\n"
         f"  7-day training load : {health_summary.get('minutes_of_load_last7days', '?')} min"
         f" → {load_labels['weekly_load']}\n"
