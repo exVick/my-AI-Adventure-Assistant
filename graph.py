@@ -40,12 +40,12 @@
 #     └─► (at least one viable forecast)
 #           │
 #           ▼
-#   [Wind_Expert_Node]           ← Agent 2 (LLM + Python scoring)
+#   [Wind_Expert_Node]           ← Pure Python (rule-based)
 #     │  Scores every viable spot (direction match, intensity, window, proximity).
-#     │  LLM selects top-5 with expert rationale.
+#     │  Returns top-5 via deterministic ranking with rationale.
 #     │  Output → state.ranked_spots
 #     ▼
-#   [Health_And_Coach_Node]      ← garmin_tools + Agent 3 (LLM)
+#   [Health_And_Coach_Node]      ← garmin_tools + Agent 2 (LLM)
 #     │  Fetches live Garmin biometrics → state.health_summary
 #     │  Head Coach LLM synthesises ranked spots + health data → state.final_alert
 #     ▼
@@ -202,9 +202,8 @@ def wind_expert_node(state: GraphState) -> dict[str, Any]:
 
     Agent 2 scores every viable spot using a pure-Python composite scorer
     (direction match + wind intensity + session window + proximity distance),
-    then passes the pre-scored table to Llama 3 70B for qualitative expert
-    ranking and rationale generation.  Returns the top-5 spots as a list of
-    dicts stored in state.ranked_spots.
+    then returns the top-5 spots via deterministic ranking with rationale.
+    Returns the top-5 spots as a list of dicts stored in state.ranked_spots.
     """
     print("\n" + "=" * 62)
     print("  NODE 4 — WIND EXPERT")
@@ -229,8 +228,8 @@ def health_and_coach_node(state: GraphState) -> dict[str, Any]:
 
     Step B — Head Coach alert (Agent 3, run_head_coach):
         Reads state.ranked_spots + state.health_summary, classifies the
-        athlete's physiological readiness, estimates drive times, and invokes
-        Llama 3 70B to generate a personalised Markdown GO alert.
+        athlete's physiological readiness and invokes Llama 3 70B to generate
+        a personalised Markdown GO alert.
         Writes to state.final_alert.
 
     Why combined? The health fetch is cheap and synchronous; splitting it into
