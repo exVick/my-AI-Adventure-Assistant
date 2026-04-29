@@ -8,9 +8,11 @@ from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 
 from state import GraphState
+from tools.weather_tools import _FORECAST_DAYS
 
 # Define model
-model_used = "openai/gpt-oss-120b"
+# model_used = "openai/gpt-oss-120b"
+model_used = "llama-3.3-70b-versatile"
 
 # ---------------------------------------------------------------------------
 # Direction-matching helpers  (pure Python — no LLM arithmetic)
@@ -63,7 +65,7 @@ def _compute_score(
     max_distance_km: float,
 ) -> float:
     """
-    Composite score (0-100) over the 16-day forecast window.
+    Composite score (0-100) over the _FORECAST_DAYS-day forecast window.
 
       Component            Weight   Logic
       ─────────────────    ──────   ──────────────────────────────────────────────────
@@ -83,7 +85,7 @@ def _compute_score(
 
     intensity  = min(30.0, max(0.0, (peak_ms - 7.5) / 7.5 * 30.0))
     dir_score  = _direction_match_pct(viable_hours, preferred_dirs) / 100.0 * 25.0
-    # 48 viable hours across 16 days earns the full session-window score
+    # 48 viable hours across _FORECAST_DAYS days earns the full session-window score
     window     = min(20.0, len(viable_hours) / 48.0 * 20.0)
     proximity  = max(0.0, (1.0 - dist_km / max_distance_km) * 10.0)
     temp_score = min(8.0,  max(0.0, (avg_temp - 15.0) / 15.0 * 8.0))
@@ -153,7 +155,7 @@ class RankedSpot(BaseModel):
     spot_name:               str   = Field(description="Exact spot name from the forecast data.")
     rank:                    int   = Field(description="1 = best, 5 = fifth-best.")
     composite_score:         float = Field(description="Pre-computed numeric score (0-100).")
-    peak_ms:                 float = Field(description="Peak blended wind speed in m/s over the 16-day window.")
+    peak_ms:                 float = Field(description=f"Peak blended wind speed in m/s over the {_FORECAST_DAYS}-day window.")
     avg_ms:                  float = Field(description="Average blended wind speed in m/s during viable hours.")
     viable_hours_count:      int   = Field(description="Total hours at or above the wind threshold across the window.")
     best_session_window:     str   = Field(
@@ -161,7 +163,7 @@ class RankedSpot(BaseModel):
                     "Format: 'YYYY-MM-DDTHH:MM / YYYY-MM-DDTHH:MM'."
     )
     best_day:                str   = Field(
-        description="ISO date (YYYY-MM-DD) of the single best kitesurf day in the 16-day window "
+        description=f"ISO date (YYYY-MM-DD) of the single best kitesurf day in the {_FORECAST_DAYS}-day window "
                     "(highest peak wind). Use for a focused day-trip recommendation."
     )
     direction_match_pct:     int   = Field(description="% of viable hours within ±45° of preferred directions (0-100).")
@@ -190,11 +192,11 @@ class WindExpertOutput(BaseModel):
 # Prompts
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """
+_SYSTEM_PROMPT = f"""
 You are a world-class kitesurf meteorologist and trip planner for the Mediterranean,
 Aegean, Adriatic, and Black Sea region.
 
-You will receive a pre-scored table of candidate spots covering the next 16-day window.
+You will receive a pre-scored table of candidate spots covering the next {_FORECAST_DAYS}-day window.
 The forecast is a WG-Mix ensemble blend of 7 NWP models (ECMWF IFS, GFS, ICON, GEM,
 AROME, ARPEGE), weighted by resolution and reliability. All values are in m/s.
 
@@ -202,7 +204,7 @@ Each row contains:
   • composite_score (0-100): Python pre-computed from —
       Wind intensity 30pts | Direction match 25pts | Session window 20pts |
       Distance 10pts | Temperature bonus 8pts | Weather quality 7pts
-  • Wind: peak_ms (peak over 16 days), avg_ms (avg during viable hours),
+  • Wind: peak_ms (peak over {_FORECAST_DAYS} days), avg_ms (avg during viable hours),
     viable_hours_count (total hours ≥ threshold), direction_match_pct
   • Weather context: avg_temp_c (during kite sessions), avg_precip_per_day_mm
     (daily avg over full window), avg_cloud_pct (overall cloud cover %)
@@ -234,7 +236,7 @@ RANKING PRIORITIES
      this less than precipitation, but factor it into overall enjoyment.
 
 4. SESSION OPPORTUNITY:
-   viable_hours_count spread across the 16-day window matters — more hours = more
+   viable_hours_count spread across the {_FORECAST_DAYS}-day window matters — more hours = more
    chances to pick a day. Flag best_day as the single best day-trip target.
 
 ─────────────────────────────────────────────
@@ -374,7 +376,7 @@ def run_wind_expert(state: GraphState) -> dict[str, Any]:
         f"  Preferred directions : {preferred_dirs}\n"
         f"  Preferred wind types : {preferred_wind_types}\n"
         f"  Max distance         : {max_distance_km} km\n"
-        f"  Forecast window      : 16 days\n\n"
+        f"  Forecast window      : {_FORECAST_DAYS} days\n\n"
         f"Pre-scored candidate spots (top {len(top_candidates)} by composite_score):\n"
         f"{table_json}\n\n"
         "Select and rank the top 5 spots. Return them using the required schema."
@@ -389,58 +391,8 @@ def run_wind_expert(state: GraphState) -> dict[str, Any]:
     structured_llm = llm.with_structured_output(WindExpertOutput)
 
     print(f"[Wind Expert] Scoring {len(weather_forecasts)} viable spots, ranking top 5 ...")
-    def _invoke_json_fallback(msgs: list) -> WindExpertOutput:
-        fallback_msgs = [
-            SystemMessage(
-                content=(
-                    _SYSTEM_PROMPT
-                    + "\nReturn ONLY the JSON object for the schema."
-                    + " Do not wrap in markdown or add commentary."
-                )
-            ),
-            *[m for m in msgs if isinstance(m, HumanMessage)],
-        ]
-        raw = llm.invoke(fallback_msgs).content or ""
-        if not raw.strip():
-            raise ValueError("Empty LLM response in JSON fallback.")
-        blob = _extract_json_blob(raw)
-        data = json.loads(blob)
-        return WindExpertOutput.model_validate(data)
-
-    try:
-        output: WindExpertOutput = structured_llm.invoke(messages)
-    except Exception as exc:
-        msg = str(exc)
-        print(f"[Wind Expert] Structured output failed, retrying with smaller payload: {exc}")
-        fallback_limit = 5 if "tool choice is required" in msg.lower() or "tool_use_failed" in msg.lower() else 7
-        top_candidates = [
-            {**s, "wind_info": _trim_wind_info(s.get("wind_info") or {})}
-            for s in scored[:fallback_limit]
-        ]
-        table_json = json.dumps(top_candidates, ensure_ascii=True, separators=(",", ":"))
-        human_text = (
-            f"Trip parameters:\n"
-            f"  Preferred directions : {preferred_dirs}\n"
-            f"  Preferred wind types : {preferred_wind_types}\n"
-            f"  Max distance         : {max_distance_km} km\n"
-            f"  Forecast window      : 16 days\n\n"
-            f"Pre-scored candidate spots (top {len(top_candidates)} by composite_score):\n"
-            f"{table_json}\n\n"
-            "Select and rank the top 5 spots. Return them using the required schema."
-        )
-        messages = [
-            SystemMessage(content=_SYSTEM_PROMPT),
-            HumanMessage(content=human_text),
-        ]
-
-        if "tool choice is required" in msg.lower() or "tool_use_failed" in msg.lower():
-            try:
-                output = _invoke_json_fallback(messages)
-            except Exception as fallback_exc:
-                print(f"[Wind Expert] JSON fallback failed, using rule-based ranking: {fallback_exc}")
-                output = _rule_based_output(scored)
-        else:
-            output = structured_llm.invoke(messages)
+    
+    output: WindExpertOutput = structured_llm.invoke(messages)
 
     ranked_spots = [s.model_dump() for s in output.ranked_spots]
 
