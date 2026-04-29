@@ -1,18 +1,11 @@
-import json
 from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
-from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 
 from state import GraphState
 from tools.weather_tools import _FORECAST_DAYS
-
-# Define model
-# model_used = "openai/gpt-oss-120b"
-model_used = "llama-3.3-70b-versatile"
 
 # ---------------------------------------------------------------------------
 # Direction-matching helpers  (pure Python — no LLM arithmetic)
@@ -188,76 +181,6 @@ class WindExpertOutput(BaseModel):
     )
 
 
-# ---------------------------------------------------------------------------
-# Prompts
-# ---------------------------------------------------------------------------
-
-_SYSTEM_PROMPT = f"""
-You are a world-class kitesurf meteorologist and trip planner for the Mediterranean,
-Aegean, Adriatic, and Black Sea region.
-
-You will receive a pre-scored table of candidate spots covering the next {_FORECAST_DAYS}-day window.
-The forecast is a WG-Mix ensemble blend of 7 NWP models (ECMWF IFS, GFS, ICON, GEM,
-AROME, ARPEGE), weighted by resolution and reliability. All values are in m/s.
-
-Each row contains:
-  • composite_score (0-100): Python pre-computed from —
-      Wind intensity 30pts | Direction match 25pts | Session window 20pts |
-      Distance 10pts | Temperature bonus 8pts | Weather quality 7pts
-  • Wind: peak_ms (peak over {_FORECAST_DAYS} days), avg_ms (avg during viable hours),
-    viable_hours_count (total hours ≥ threshold), direction_match_pct
-  • Weather context: avg_temp_c (during kite sessions), avg_precip_per_day_mm
-    (daily avg over full window), avg_cloud_pct (overall cloud cover %)
-  • Spot database: wind_info with best_direction, wind_type, main_direction, description
-  • Pre-computed windows: best_session_window (longest consecutive block), best_day
-
-─────────────────────────────────────────────
-RANKING PRIORITIES
-─────────────────────────────────────────────
-
-1. WIND STRENGTH (primary):
-   Prefer spots with strong sustained ensemble wind (avg_ms ≥ 9 m/s is excellent,
-   7.5-9 m/s is marginal). A spot with one exceptional 5-hour window at 12 m/s
-   beats a spot with 40 hours of 8 m/s if the athlete wants a committed session.
-
-2. DIRECTION FIT:
-   Cross-reference direction_match_pct WITH wind_info.best_direction and
-   wind_info.description. A spot whose database profile (e.g. "NE thermal, April-Oct")
-   structurally aligns with the forecasted direction is reliable — not just
-   coincidentally windy. Spots with "onshore only", "gusty", or "unreliable" in their
-   description should be penalised even if the score is high.
-
-3. WEATHER QUALITY:
-   • Temperature: avg_temp_c ≥ 22°C is ideal (warm beach day). Below 15°C is
-     unpleasant and reduces session duration.
-   • Precipitation: avg_precip_per_day_mm ≤ 1 mm is excellent, ≥ 4 mm ruins
-     beach days. Penalise heavily above 4 mm even if wind is strong.
-   • Cloud cover: avg_cloud_pct ≤ 40% is great, ≥ 80% is oppressive. Weight
-     this less than precipitation, but factor it into overall enjoyment.
-
-4. SESSION OPPORTUNITY:
-   viable_hours_count spread across the {_FORECAST_DAYS}-day window matters — more hours = more
-   chances to pick a day. Flag best_day as the single best day-trip target.
-
-─────────────────────────────────────────────
-RATIONALE (2 sentences per spot — be concise)
-─────────────────────────────────────────────
-Sentence 1: wind strength + direction alignment with wind_info.
-Sentence 2: weather verdict (temp/rain/cloud) + best_day call-out.
-
-Return your answer using the provided response schema — no extra prose.
-Output must be valid JSON, ASCII only, no special symbols or non-ASCII spaces.
-""".strip()
-
-
-def _extract_json_blob(text: str) -> str:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return text
-    return text[start:end + 1]
-
-
 def _rule_based_output(scored_rows: list[dict]) -> WindExpertOutput:
     top = scored_rows[:5]
     ranked = []
@@ -290,7 +213,7 @@ def _rule_based_output(scored_rows: list[dict]) -> WindExpertOutput:
             "rationale": rationale,
         })
 
-    summary = "Auto-ranked by composite score due to LLM tool failure."
+    summary = "Auto-ranked by composite score using rule-based scoring."
     return WindExpertOutput(ranked_spots=ranked, expert_summary=summary)
 
 
@@ -304,9 +227,8 @@ def run_wind_expert(state: GraphState) -> dict[str, Any]:
 
     Merges candidate_spots metadata with the WG-Mix ensemble weather_forecasts,
     computes a composite score per spot in pure Python (direction math, window
-    length, wind intensity, distance, temperature, weather quality), then passes
-    the pre-scored table to the LLM for holistic expert ranking, weather
-    interpretation, and personalised rationale generation.
+    length, wind intensity, distance, temperature, weather quality), then returns
+    the top 5 spots using rule-based ranking.
 
     Reads from state : candidate_spots, weather_forecasts, trip_parameters
     Writes to state  : ranked_spots, messages
@@ -353,46 +275,10 @@ def run_wind_expert(state: GraphState) -> dict[str, Any]:
         print("[Wind Expert] No viable forecasts to rank.")
         return {"ranked_spots": [], "messages": []}
 
-    # Trim wind_info before serialisation: drop best_months (used upstream),
-    # cap description at 120 chars to keep the JSON payload small and avoid
-    # hitting the model's output-token limit on the structured response.
-    def _trim_wind_info(wi: dict) -> dict:
-        desc = (wi.get("description") or "")[:120]
-        return {
-            "wind_type":      wi.get("wind_type"),
-            "best_direction": wi.get("best_direction"),
-            "main_direction": wi.get("main_direction"),
-            "description":    desc,
-        }
-
-    top_candidates = [
-        {**s, "wind_info": _trim_wind_info(s.get("wind_info") or {})}
-        for s in scored[:10]   # top-10 keeps prompt + output well within token limits
-    ]
-
-    table_json = json.dumps(top_candidates, ensure_ascii=True, separators=(",", ":"))
-    human_text = (
-        f"Trip parameters:\n"
-        f"  Preferred directions : {preferred_dirs}\n"
-        f"  Preferred wind types : {preferred_wind_types}\n"
-        f"  Max distance         : {max_distance_km} km\n"
-        f"  Forecast window      : {_FORECAST_DAYS} days\n\n"
-        f"Pre-scored candidate spots (top {len(top_candidates)} by composite_score):\n"
-        f"{table_json}\n\n"
-        "Select and rank the top 5 spots. Return them using the required schema."
-    )
-
-    messages = [
-        SystemMessage(content=_SYSTEM_PROMPT),
-        HumanMessage(content=human_text),
-    ]
-
-    llm = ChatGroq(model=model_used, temperature=0.2, max_tokens=1200)
-    structured_llm = llm.with_structured_output(WindExpertOutput)
-
     print(f"[Wind Expert] Scoring {len(weather_forecasts)} viable spots, ranking top 5 ...")
-    
-    output: WindExpertOutput = structured_llm.invoke(messages)
+
+    output = _rule_based_output(scored)
+
 
     ranked_spots = [s.model_dump() for s in output.ranked_spots]
 
@@ -406,5 +292,5 @@ def run_wind_expert(state: GraphState) -> dict[str, Any]:
 
     return {
         "ranked_spots": ranked_spots,
-        "messages": [*messages, output.expert_summary],
+        "messages": [output.expert_summary],
     }
