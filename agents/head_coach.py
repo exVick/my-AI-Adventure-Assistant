@@ -90,29 +90,27 @@ specific conditions at each ranked spot.
 OUTPUT FORMAT  (strict Markdown, ≤ 220 words)
 ────────────────────────────────────────────────────────────
 
-## 🪁 Kitesurf Watchdog — GO ALERT
+## 🪁 Kitesurf Forecast Summary
 
 **Top Pick: <spot_name>, <country>**
-<one punchy sentence on WHY this spot wins>
+<one sentence on WHY this spot wins>
 
-| # | Spot | Peak wind | Temp | Best window |
-|---|------|-----------|------|-------------|
-| (fill top-5 table) |
+Top 5 spots (numbered list with indented items):
+1. <spot_name>:
+    - peak: <peak wind> 
+    - temp: <temp> 
+    - best window: <DD. Month> -> <DD. Month>
+(continue list for top 5)
 
----
+
 ### 🔋 Athlete Readiness: <readiness_label>
-<Biometric snapshot: 2-3 bullet points interpreting the Garmin data scientifically>
-
-### 🎯 Session Strategy
-<2-3 bullet points: concrete session tactics calibrated to readiness level>
-  - If readiness is peak/solid → push progression, go unhooked, extend duration.
-  - If readiness is tired/fatigued → modulate intensity: smooth technique focus,
-    shorter session, specific pre-session protocol (hydration, carb-loading, nap).
+<Biometric snapshot: 2-3 bullet points interpreting the Garmin data scientifically and how should my session strategy be adjusted>
 
 ### 🚗 Logistics
-<Drive time to top pick. Any second-choice contingency worth mentioning.>
+<Drive time to top pick, consider ferries. Any second-choice contingency worth mentioning.>
 
 ────────────────────────────────────────────────────────────
+Date formatting: best window dates must be like "30. April" (no year).
 Tone: stoked, candid, scientifically grounded. Speak to the athlete directly.
 Never recommend skipping. Always recommend HOW to approach the session.
 """.strip()

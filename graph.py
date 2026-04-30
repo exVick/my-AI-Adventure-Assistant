@@ -59,6 +59,8 @@
 # ============================================================
 
 import os
+import sys
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 
@@ -78,6 +80,21 @@ from tools.telegram_tools import send_telegram_alert
 load_dotenv(Path(__file__).parent / ".env")
 
 _HERE = Path(__file__).parent
+
+
+class _Tee:
+    def __init__(self, *streams):
+        self._streams = streams
+
+    def write(self, data: str) -> int:
+        total = 0
+        for stream in self._streams:
+            total = max(total, stream.write(data))
+        return total
+
+    def flush(self) -> None:
+        for stream in self._streams:
+            stream.flush()
 
 
 # ============================================================
@@ -344,51 +361,56 @@ def build_graph() -> StateGraph:
 # ============================================================
 
 if __name__ == "__main__":
-    # ── Pre-flight checks ─────────────────────────────────────────────────────
-    required = ("GROQ_API_KEY", "GARMIN_EMAIL", "SPOTS_JSON_PATH",
-                "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
-    missing = [v for v in required if not os.environ.get(v)]
-    if missing:
-        raise SystemExit(
-            f"ERROR: missing required env var(s): {', '.join(missing)}\n"
-            "Add them to my-AI-Adventure-Assistant/.env"
-        )
+    log_path = _HERE / "pipeline.log"
+    with log_path.open("w", encoding="utf-8") as log_fh:
+        tee_out = _Tee(sys.stdout, log_fh)
+        tee_err = _Tee(sys.stderr, log_fh)
+        with redirect_stdout(tee_out), redirect_stderr(tee_err):
+            # ── Pre-flight checks ─────────────────────────────────────────────
+            required = ("GROQ_API_KEY", "GARMIN_EMAIL", "SPOTS_JSON_PATH",
+                        "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID")
+            missing = [v for v in required if not os.environ.get(v)]
+            if missing:
+                raise SystemExit(
+                    f"ERROR: missing required env var(s): {', '.join(missing)}\n"
+                    "Add them to my-AI-Adventure-Assistant/.env"
+                )
 
-    # ── Compile ───────────────────────────────────────────────────────────────
-    app = build_graph()
+            # ── Compile ───────────────────────────────────────────────────────
+            app = build_graph()
 
-    # ── Banner ────────────────────────────────────────────────────────────────
-    print("\n" + "=" * 62)
-    print("  AUTONOMOUS KITESURF WATCHDOG V2 — PIPELINE START")
-    print("=" * 62)
+            # ── Banner ────────────────────────────────────────────────────────
+            print("\n" + "=" * 62)
+            print("  AUTONOMOUS KITESURF WATCHDOG V2 — PIPELINE START")
+            print("=" * 62)
 
-    # ── Initial state — all fields empty; each node fills its own slice ───────
-    #
-    # LangGraph merges partial dicts returned by each node into the running
-    # state automatically.  No field needs a value at startup — nodes that read
-    # a field always run after the node that writes it (enforced by edge order).
-    initial_state: GraphState = {
-        "messages":         [],
-        "trip_parameters":  {},
-        "candidate_spots":  [],
-        "weather_forecasts": {},
-        "ranked_spots":     [],
-        "health_summary":   {},
-        "final_alert":      "",
-    }
+            # ── Initial state — all fields empty; each node fills its own slice
+            #
+            # LangGraph merges partial dicts returned by each node into the running
+            # state automatically.  No field needs a value at startup — nodes that read
+            # a field always run after the node that writes it (enforced by edge order).
+            initial_state: GraphState = {
+                "messages":         [],
+                "trip_parameters":  {},
+                "candidate_spots":  [],
+                "weather_forecasts": {},
+                "ranked_spots":     [],
+                "health_summary":   {},
+                "final_alert":      "",
+            }
 
-    final_state = app.invoke(initial_state)
+            final_state = app.invoke(initial_state)
 
-    # ── Terminal output ───────────────────────────────────────────────────────
-    border = "=" * 62
-    if final_state.get("final_alert"):
-        print(f"\n{border}")
-        print(final_state["final_alert"])
-        print(border)
-    else:
-        print(f"\n{border}")
-        print("  No viable kitesurf conditions found for this window.")
-        print("  Recover well. The wind will come back. 🔋")
-        print(border)
+            # ── Terminal output ───────────────────────────────────────────────
+            border = "=" * 62
+            if final_state.get("final_alert"):
+                print(f"\n{border}")
+                print(final_state["final_alert"])
+                print(border)
+            else:
+                print(f"\n{border}")
+                print("  No viable kitesurf conditions found for this window.")
+                print("  Recover well. The wind will come back. 🔋")
+                print(border)
 
-    print("\n[Pipeline] Execution complete.")
+            print("\n[Pipeline] Execution complete.")
